@@ -28,6 +28,22 @@ jobs:
       - uses: alessbell/pull-request-comment-branch@ef3408c9757d05f89cb525036383033a313758a0 # v2.1.0
         id: comment-branch
 
+      # Only run code the commenter has reviewed: GitHub fixes a review's commit_id when it is submitted.
+      - name: Require a review of the exact head commit by the commenter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.comment-branch.outputs.head_sha }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          reviewed=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --paginate \
+            --jq '.[] | select(.user.login == env.COMMENTER and .commit_id == env.HEAD_SHA) | .id')
+          if [[ -z "$reviewed" ]]; then
+            echo "::error::${COMMENTER} has not reviewed ${HEAD_SHA}, the current head of #${PR_NUMBER}. Not running it."
+            exit 1
+          fi
+          echo "${COMMENTER} reviewed ${HEAD_SHA} (review id(s): $reviewed)"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Specify repository as the PR branch might be from a fork.
